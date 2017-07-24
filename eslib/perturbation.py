@@ -33,13 +33,13 @@ class Perturbation:
         _cyclic_copy(src, dst, src_offset, dst_offset, total_length)
         self.cursor += total_length
         r = dst.reshape(shape)
-        if self.current_worker_id % 2 == 1:
+        if self.current_ptb_id % 2 == 1:
             r *= -1
         return r
 
-    def init_state(self, worker_id):
-        self.current_worker_id = worker_id
-        i = worker_id if worker_id % 2 == 0 else (worker_id - 1)
+    def init_state(self, ptb_id):
+        self.current_ptb_id = ptb_id
+        i = ptb_id if ptb_id % 2 == 0 else (ptb_id - 1)
         self.cursor = (i + self.t) % len(self.random_table)
 
     @property
@@ -47,8 +47,8 @@ class Perturbation:
         return getattr(self, '_within_generation_scope', False)
 
     @contextlib.contextmanager
-    def generation_scope(self, worker_id):
-        self.init_state(worker_id)
+    def generation_scope(self, ptb_id):
+        self.init_state(ptb_id)
         if self.within_generation_scope:
             raise RuntimeError
         else:

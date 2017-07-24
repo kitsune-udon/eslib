@@ -29,8 +29,8 @@ def _acc_ptb_score_mul(param, score):
         param.grad = np.zeros_like(param.data)
     param.grad += param.ptb * score
 
-def set_perturbations(link, ptb, worker_id):
-    with ptb.generation_scope(worker_id):
+def set_perturbations(link, ptb, ptb_id):
+    with ptb.generation_scope(ptb_id):
         for param in link.params():
             _alloc_ptb(param, ptb)
 
