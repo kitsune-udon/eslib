@@ -94,7 +94,7 @@ class Optimizer:
 
     def _call_hook(self, hook):
         if getattr(hook, 'call_for_each_param', False):
-            for param in self.target.params():
+            for param in self.target.params(False):
                 hook(param.update_rule, param)
         else:
             hook(self)
@@ -112,7 +112,7 @@ class GradientMethod(Optimizer):
     def update(self):
         self.call_hooks()
         self.t += 1
-        for param in self.target.params():
+        for param in self.target.params(False):
             param.update()
 
 def _sum_sqnorm(arr):
@@ -130,10 +130,10 @@ class GradientClipping:
         self.eps = eps
     def __call__(self, opt):
         norm = np.sqrt(_sum_sqnorm(
-            [p.grad for p in opt.target.params()])) + self.eps
+            [p.grad for p in opt.target.params(False)])) + self.eps
         rate = self.threshold / norm
         if rate < 1:
-            for param in opt.target.params():
+            for param in opt.target.params(False):
                 grad = param.grad
                 grad *= rate
 

@@ -30,10 +30,11 @@ class Link:
         del self._params[name]
         super(Link, self).__delattr__(name, value)
 
-    def params(self):
+    def params(self, include_uninit=True):
         d = self.__dict__
         for name in self._params:
-            yield d[name]
+            if include_uninit or d[name].data is not None:
+                yield d[name]
 
     def cleargrads(self):
         for param in self.params():
@@ -76,10 +77,10 @@ class Chain(Link):
         del self._children[name]
         super(Chain, self).__delattr__(name)
 
-    def params(self):
-        for param in super(Chain, self).params():
+    def params(self, include_uninit=True):
+        for param in super(Chain, self).params(include_uninit):
             yield param
         d = self.__dict__
         for name in self._children:
-            for param in d[name].params():
+            for param in d[name].params(include_uninit):
                 yield param

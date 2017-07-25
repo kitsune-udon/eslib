@@ -31,16 +31,16 @@ def _acc_ptb_score_mul(param, score):
 
 def set_perturbations(link, ptb, ptb_id):
     with ptb.generation_scope(ptb_id):
-        for param in link.params():
+        for param in link.params(False):
             _alloc_ptb(param, ptb)
 
 def calculate_grads(link, ptb, scores):
     n = len(scores)
     for ptb_id in range(len(scores)):
         set_perturbations(link, ptb, ptb_id)
-        for param in link.params():
+        for param in link.params(False):
             _acc_ptb_score_mul(param, scores[ptb_id])
-    for param in link.params():
+    for param in link.params(False):
         c = 1. / (n * param.sigma)
         param.grad *= c
 
