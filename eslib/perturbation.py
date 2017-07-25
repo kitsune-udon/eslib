@@ -8,7 +8,8 @@ def _cyclic_copy(src, dst, src_offset, dst_offset, size):
     remain = size
     while remain > 0:
         copy_size = min(remain, len(src)-src_cursor, len(dst)-dst_cursor)
-        dst[dst_cursor:dst_cursor+copy_size] = src[src_cursor:src_cursor+copy_size]
+        if copy_size > 0:
+            dst[dst_cursor:dst_cursor+copy_size] = src[src_cursor:src_cursor+copy_size]
         src_cursor = (src_cursor + copy_size) % len(src)
         dst_cursor = (dst_cursor + copy_size) % len(dst)
         remain -= copy_size
