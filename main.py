@@ -5,87 +5,143 @@ import eslib.optimizers as O
 from eslib.optimizer import GradientClipping, WeightDecay
 import numpy as np
 from mpi4py import MPI
-import pickle, os, gym, mlp
+import pickle, os, gym, mlp, argparse, glob
 
-def save_model(model, env_name, i):
-    dirpath = "/tmp/" + env_name
-    if not os.path.exists(dirpath):
-        os.makedirs(dirpath)
-    filename = "{:0>5}.pickle".format(i)
-    filepath = '/'.join([dirpath, filename])
-    with open(filepath, 'wb') as f:
-        pickle.dump(model, f)
-    print("saved to {}".format(filepath))
+class Runner:
+    def __init__(self, args):
+        self.args = args
 
-def print_status(model, i, scores, steps):
-    print("iter:{}".format(i))
-    print("score(max,ave,min):({:.2f}, {:.2f}, {:.2f})".format(scores.max(), scores.mean(), scores.min()))
-    print("step(max,ave,min):({:.2f}, {:.2f}, {:.2f})".format(steps.max(), steps.mean(), steps.min()))
-    print("param(max,min):({:.2f}, {:.2f})".format(
-        max([param.data.max() for param in model.params(False)]),
-        min([param.data.min() for param in model.params(False)])))
+        comm = MPI.COMM_WORLD
+        self.comm = comm
+        self.n_workers = comm.size
+        self.rank = comm.rank
+        self.saving_span = 10
 
-def get_score(model, env):
-    obs = env.reset()
-    acc = 0
-    n_steps = 0
-    while True:
-        y = model(obs)
-        act = np.random.choice(len(y), p=F.softmax(y))
-        obs, reward, done, info = env.step(act)
-        acc += reward
-        n_steps += 1
-        if done:
-            break
-    total_score = acc / 200
-    return total_score, n_steps
+        env = gym.make(args.env_name)
+        if args.monitor and self.rank == 0:
+            env = gym.wrappers.Monitor(env, args.env_name + '_monitor', force=True)
+        self.env = env
+
+        self.n_ptbs = self.n_workers
+
+        self.p = eslib.Perturbation()
+        n_actions = env.action_space.n
+        self.model = mlp.MLP(20, n_actions)
+
+        optimizer = O.SMORMS3(lr=1e-2)
+        optimizer.setup(self.model)
+        optimizer.add_hook(GradientClipping(1e2))
+        optimizer.add_hook(WeightDecay(0.005))
+        self.optimizer = optimizer
+
+        eslib.fix_model(self.model, gym.make(args.env_name).reset())
+
+    def __call__(self):
+        for i in range(self.args.n_iter):
+            d = np.zeros(2, dtype=np.float32)
+            ds = np.zeros(2 * self.n_ptbs, dtype=np.float32)
+
+            with eslib.perturbation_scope():
+                ptb_id = self.rank
+                eslib.set_perturbations(self.model, self.p, ptb_id)
+                score, n_steps = self.get_score()
+                d[0], d[1] = score, n_steps
+
+            self.comm.Allgather([d, MPI.FLOAT], [ds, MPI.FLOAT])
+
+            ds = ds.reshape(-1, 2).transpose()
+            scores, steps = ds[0], ds[1]
+
+            eslib.calculate_grads(self.model, self.p, scores)
+            self.optimizer.update()
+            self.model.cleargrads()
+            self.p.age()
+
+            if self.rank == 0:
+                self.print_status(i, scores, steps)
+
+                if i % self.args.saving_span == 0:
+                    self.save_model(i)
+
+    def close(self):
+        self.env.close()
+
+    @property
+    def model_dir(self):
+        if self.args.dst_filepath is None:
+            dirpath = self.args.env_name + "_model"
+        else:
+            dirpath = self.args.dst_filepath
+        return dirpath
+
+    def save_model(self, i):
+        dirpath = self.model_dir
+
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+
+        filename = "{:0>5}.pickle".format(i)
+        filepath = '/'.join([dirpath, filename])
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(self.model, f)
+
+        print("saved to {}".format(filepath))
+
+    def clean_model_dir(self):
+        dirpath = self.model_dir
+        if not os.path.exists(dirpath):
+            return
+        target = []
+        target += glob.glob(dirpath + "/*.pickle")
+        target += glob.glob(dirpath + "/*.pickle.mp4")
+        target += glob.glob(dirpath + "/*.pickle.meta.json")
+        for filepath in target:
+            os.remove(filepath)
+
+    def print_status(self, i, scores, steps):
+        print("iter:{}".format(i))
+        print("score(max,ave,min):({:.2f}, {:.2f}, {:.2f})".format(scores.max(), scores.mean(), scores.min()))
+        print("step(max,ave,min):({:.2f}, {:.2f}, {:.2f})".format(steps.max(), steps.mean(), steps.min()))
+        print("param(max,min):({:.2f}, {:.2f})".format(
+            max([param.data.max() for param in self.model.params(False)]),
+            min([param.data.min() for param in self.model.params(False)])))
+
+    def get_score(self):
+        env = self.env
+        obs = env.reset()
+        acc = 0
+        n_steps = 0
+        while True:
+            y = self.model(obs)
+            action = np.random.choice(len(y), p=F.softmax(y))
+            obs, reward, done, info = env.step(action)
+            acc += reward
+            n_steps += 1
+            if done:
+                break
+        total_score = acc / 200
+        return total_score, n_steps
 
 def main():
-    n_iters = 10001
-    comm = MPI.COMM_WORLD
-    n_workers = comm.size
-    rank = comm.rank
-    n_ptbs = n_workers
-    saving_span = 10
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--env_name', dest='env_name', type=str, required=True,
+            help="gym env name")
+    parser.add_argument('--dst', dest='dst_filepath', type=str,
+            help="path for saving the model")
+    parser.add_argument('--n_iter', dest='n_iter', type=int, default=10001,
+            help="number of iterations")
+    parser.add_argument('--saving_span', dest='saving_span', type=int, default=10,
+            help="span of saving the model")
+    parser.add_argument('--monitor', dest='monitor', const=True, action='store_const', default=False,
+            help="whether to monitor the env")
+    args = parser.parse_args()
 
-    env_name = 'LunarLander-v2'
-    env = gym.make(env_name)
-    if rank == 0:
-        env = gym.wrappers.Monitor(env, env_name + '_monitor', force=True)
-    n_actions = env.action_space.n
-
-    p = eslib.Perturbation()
-    model = mlp.MLP(20, n_actions)
-    optimzier = O.SMORMS3(lr=1e-2)
-    optimzier.setup(model)
-    optimzier.add_hook(GradientClipping(1e2))
-    optimzier.add_hook(WeightDecay(0.005))
-    eslib.fix_model(model, gym.make(env_name).reset())
-
-    for i in range(n_iters):
-        d = np.zeros(2, dtype=np.float32)
-        ds = np.zeros(2 * n_ptbs, dtype=np.float32)
-
-        with eslib.perturbation_scope():
-            ptb_id = rank
-            eslib.set_perturbations(model, p, ptb_id)
-            score, n_steps = get_score(model, env)
-            d[0], d[1] = score, n_steps
-
-        comm.Allgather([d, MPI.FLOAT], [ds, MPI.FLOAT])
-
-        ds = ds.reshape(-1, 2).transpose()
-        scores, steps = ds[0], ds[1]
-
-        eslib.calculate_grads(model, p, scores)
-        optimzier.update()
-        model.cleargrads()
-        p.age()
-
-        if rank == 0:
-            print_status(model, i, scores, steps)
-
-            if i % saving_span == 0:
-                save_model(model, env_name, i)
+    runner = Runner(args)
+    runner.clean_model_dir()
+    try:
+        runner()
+    finally:
+        runner.close()
 
 main()
