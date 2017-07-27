@@ -17,6 +17,9 @@ class Runner:
         self.rank = comm.rank
         self.saving_span = 10
 
+        if args.clean:
+            self.clean_model_dir()
+
         env = gym.make(args.env_name)
         if args.monitor and self.rank == 0:
             env = gym.wrappers.Monitor(env, args.env_name + '_monitor', force=True)
@@ -135,10 +138,11 @@ def main():
             help="span of saving the model")
     parser.add_argument('--monitor', dest='monitor', const=True, action='store_const', default=False,
             help="whether to monitor the env")
+    parser.add_argument('--clean', dest='clean', const=True, action='store_const', default=False,
+            help="whether to clean the directory for saving the model")
     args = parser.parse_args()
 
     runner = Runner(args)
-    runner.clean_model_dir()
     try:
         runner()
     finally:
