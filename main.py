@@ -55,7 +55,9 @@ class Runner:
             ds = ds.reshape(-1, 2).transpose()
             scores, steps = ds[0], ds[1]
 
-            eslib.calculate_grads(self.model, self.p, scores)
+            fitness = eslib.fitness_shaping(scores, args.cutoff_fitness) if self.args.fitness_shaping else scores
+
+            eslib.calculate_grads(self.model, self.p, fitness)
             self.optimizer.update()
             self.model.cleargrads()
             self.p.age()
@@ -140,6 +142,10 @@ def main():
             help="whether to monitor the env")
     parser.add_argument('--clean', dest='clean', const=True, action='store_const', default=False,
             help="whether to clean the directory for saving the model")
+    parser.add_argument('--fitness_shaping', dest='fitness_shaping', const=True, action='store_const', default=False,
+            help="whether to use 'fitness shaping'")
+    parser.add_argument('--cutoff_fitness', dest='cutoff_fitness', const=True, action='store_const', default=False,
+            help="whether to cutoff the fitness in the fitness shaping")
     args = parser.parse_args()
 
     runner = Runner(args)

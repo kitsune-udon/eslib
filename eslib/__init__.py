@@ -47,3 +47,11 @@ def calculate_grads(link, ptb, scores):
 def fix_model(model, x):
     model(x)
 
+def fitness_shaping(scores, cutoff_flag):
+    n = len(scores)
+    rank = scores.argsort()[::-1].argsort() + 1
+    t = np.log(n / 2 + 1) - np.log(rank)
+    if cutoff_flag:
+        t[t < 0] = 0
+    u = t / t.sum() - 1 / n
+    return u
