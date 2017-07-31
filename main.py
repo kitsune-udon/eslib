@@ -28,7 +28,7 @@ class Runner:
 
         self.p = eslib.Perturbation()
         n_actions = env.action_space.n
-        self.model = mlp.MLP(20, n_actions)
+        self.model = mlp.MLP(n_actions)
 
         optimizer = O.Adam(alpha=1e-2)
         optimizer.setup(self.model)

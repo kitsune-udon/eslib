@@ -3,8 +3,9 @@ import eslib.links as L
 import eslib.functions as F
 
 class MLP(eslib.Chain):
-    def __init__(self, n_hiddens, n_actions):
+    def __init__(self, n_actions):
         super(MLP, self).__init__()
+        n_hiddens = 20
         with self.init_scope():
             self.l1 = L.Linear(None, n_hiddens)
             self.l2 = L.Linear(None, n_hiddens)
