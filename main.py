@@ -15,7 +15,6 @@ class Runner:
         self.comm = comm
         self.n_workers = comm.size
         self.rank = comm.rank
-        self.saving_span = 10
 
         if args.clean:
             self.clean_model_dir()
@@ -31,7 +30,6 @@ class Runner:
         n_actions = env.action_space.n
         self.model = mlp.MLP(20, n_actions)
 
-        #optimizer = O.SMORMS3(lr=1e-2)
         optimizer = O.Adam(alpha=1e-2)
         optimizer.setup(self.model)
         optimizer.add_hook(GradientClipping(1e2))
@@ -64,7 +62,7 @@ class Runner:
             if self.rank == 0:
                 self.print_status(i, scores, steps)
 
-                if i % self.args.saving_span == 0:
+                if i % self.args.save_interval == 0:
                     self.save_model(i)
 
             self.model.cleargrads()
@@ -141,8 +139,8 @@ def main():
             help="path for saving the model")
     parser.add_argument('--n_iter', dest='n_iter', type=int, default=10001,
             help="number of iterations")
-    parser.add_argument('--saving_span', dest='saving_span', type=int, default=10,
-            help="span of saving the model")
+    parser.add_argument('--save_interval', dest='save_interval', type=int, default=10,
+            help="interval of saving the model")
     parser.add_argument('--monitor', dest='monitor', const=True, action='store_const', default=False,
             help="whether to monitor the env")
     parser.add_argument('--clean', dest='clean', const=True, action='store_const', default=False,
