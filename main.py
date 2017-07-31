@@ -31,7 +31,8 @@ class Runner:
         n_actions = env.action_space.n
         self.model = mlp.MLP(20, n_actions)
 
-        optimizer = O.SMORMS3(lr=1e-2)
+        #optimizer = O.SMORMS3(lr=1e-2)
+        optimizer = O.Adam(alpha=1e-2)
         optimizer.setup(self.model)
         optimizer.add_hook(GradientClipping(1e2))
         optimizer.add_hook(WeightDecay(0.005))
@@ -55,18 +56,19 @@ class Runner:
             ds = ds.reshape(-1, 2).transpose()
             scores, steps = ds[0], ds[1]
 
-            fitness = eslib.fitness_shaping(scores, args.cutoff_fitness) if self.args.fitness_shaping else scores
+            fitness = eslib.fitness_shaping(scores, self.args.cutoff_fitness) if self.args.fitness_shaping else scores
 
             eslib.calculate_grads(self.model, self.p, fitness)
             self.optimizer.update()
-            self.model.cleargrads()
-            self.p.age()
 
             if self.rank == 0:
                 self.print_status(i, scores, steps)
 
                 if i % self.args.saving_span == 0:
                     self.save_model(i)
+
+            self.model.cleargrads()
+            self.p.age()
 
     def close(self):
         self.env.close()
@@ -111,6 +113,9 @@ class Runner:
         print("param(max,min):({:.2f}, {:.2f})".format(
             max([param.data.max() for param in self.model.params(False)]),
             min([param.data.min() for param in self.model.params(False)])))
+        print("grad(max,min):({:.2f}, {:.2f})".format(
+            max([param.grad.max() for param in self.model.params(False)]),
+            min([param.grad.min() for param in self.model.params(False)])))
 
     def get_score(self):
         env = self.env
