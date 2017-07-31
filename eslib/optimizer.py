@@ -154,4 +154,4 @@ class WeightDecay:
         self.rate = rate
     def __call__(self, rule, param):
         p, g = param.data, param.grad
-        g += self.rate * p
+        g -= self.rate * p
