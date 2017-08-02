@@ -33,7 +33,7 @@ class Runner:
         optimizer = O.Adam(alpha=1e-2)
         optimizer.setup(self.model)
         optimizer.add_hook(GradientClipping(1e2))
-        optimizer.add_hook(WeightDecay(0.005))
+        optimizer.add_hook(WeightDecay(0.0005))
         self.optimizer = optimizer
 
         eslib.fix_model(self.model, gym.make(args.env_name).reset())
